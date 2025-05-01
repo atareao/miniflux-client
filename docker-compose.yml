@@ -1,0 +1,14 @@
+services:
+  miniflux-client:
+    image: atareao/miniflux-client:latest
+    container_name: miniflux-client
+    init: true
+    restart: unless-stopped
+    environment:
+      RUST_LOG: DEBUG
+      SLEEP_TIME: 1800
+      MINIFLUX_URL: "miniflux.tuservidor.es"
+      MINIFLUX_TOKEN: ""
+      MATRIX_URL: "matrix.tuservidor.es"
+      MATRIX_TOKEN: ""
+      MATRIX_ROOM: ""

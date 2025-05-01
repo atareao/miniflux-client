@@ -1,0 +1,114 @@
+use serde::{Serialize, Deserialize};
+use reqwest::Client;
+use serde_json::Value;
+use tracing::debug;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MinifluxClient {
+    pub url: String,
+    pub token: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Data {
+    entry_ids: Vec<u64>,
+    status: String
+}
+
+impl MinifluxClient {
+
+    pub fn new(url: String, token: String) -> Self {
+        MinifluxClient {
+            url,
+            token,
+        }
+    }
+
+    pub async fn get_entries(&self) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
+        let url = format!("https://{}/v1/entries", self.url);
+        let client = Client::new();
+        let response = client
+            .get(&url)
+            .query(&[("status", "unread")])
+            .header("X-Auth-Token", &self.token)
+            .send()
+            .await?;
+        let content = response.json::<serde_json::Value>().await?;
+        Ok(content["entries"].as_array().unwrap().to_vec())
+    }
+
+    pub async fn get_entry(&self, id: i32) -> Result<Value, Box<dyn std::error::Error>> {
+        let url = format!("https://{}/v1/entries/{}", self.url, id);
+        let client = Client::new();
+        let response = client
+            .get(&url)
+            .query(&[("status", "unread")])
+            .header("X-Auth-Token", &self.token)
+            .send()
+            .await?;
+        Ok(response.json::<serde_json::Value>().await?)
+    }
+
+    pub async fn refresh_all_feeds(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let url = format!("https://{}/v1/feeds/refresh", self.url);
+        let client = Client::new();
+        let response = client
+            .put(&url)
+            .header("X-Auth-Token", &self.token)
+            .send()
+            .await?;
+        debug!("================");
+        debug!("Response: {:?}", response);
+        debug!("================");
+        Ok(())
+    }
+
+    pub async fn mark_as_read(&self, entry_ids: Vec<u64>) -> Result<(), Box<dyn std::error::Error>> {
+        let url = format!("https://{}/v1/entries", self.url);
+        let client = Client::new();
+        let data = Data {
+            entry_ids,
+            status: "read".to_string(),
+        };
+        debug!("Data: {:?}", data);
+        let response = client
+            .put(&url)
+            .header("X-Auth-Token", &self.token)
+            .json(&data)
+            .send()
+            .await?;
+        debug!("================");
+        debug!("Response: {:?}", response);
+        debug!("================");
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::MinifluxClient;
+    use dotenv::dotenv;
+    use tracing_subscriber::{
+        EnvFilter,
+        layer::SubscriberExt,
+        util::SubscriberInitExt
+    };
+    use tracing::debug;
+
+    #[tokio::test]
+    async fn read_entries() {
+        dotenv().ok();
+        tracing_subscriber::registry()
+            .with(EnvFilter::from_default_env())
+            .init();
+        let miniflux = MinifluxClient::new(
+            std::env::var("MINIFLUX_URL").expect("MINIFLUX_URL is mandatory"),
+            std::env::var("MINIFLUX_TOKEN").expect("MINIFLUX_TOKEN is mandatory"),
+        );
+        let entries = miniflux.get_entries().await;
+        println!("Entries: {:?}", entries);
+        debug!("Entries: {:?}", entries);
+        assert!(entries.is_ok());
+    }
+}
+
