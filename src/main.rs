@@ -44,19 +44,16 @@ async fn main() {
                     let feed = entry["feed"].as_object().unwrap();
                     let feed_title = feed["title"].as_str().unwrap_or("No feed title");
                     let published_at = entry["published_at"].as_str().unwrap_or("No published_at");
-                    let content = miniflux.get_content(id).await.unwrap_or("".to_string());
                     let message = format!(
-                        "\
-                        <h3><a href=\"{url}\">{title}</a></h3>\
-                        <ul>\
-                            <li>{feed_title}</li>\
-                            <li>{published_at}</li>\
-                            <li>{author}</li>\
-                        </ul>\
-                        <details>\
-                            <summary>{resume}</summary>\
-                            {content}\
-                        </details>\
+                        "<h3><a href=\"{url}\">{title}</a></h3>
+                        <ul>
+                            <li>{feed_title}</li>
+                            <li>{published_at}</li>
+                            <li>{author}</li>
+                        </ul>
+                        <p>
+                        {resume}
+                        </p>
                         <hr>"
                     );
                     if let Ok(response) = matrix.post(&message).await {
