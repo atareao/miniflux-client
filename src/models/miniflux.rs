@@ -37,18 +37,6 @@ impl MinifluxClient {
         Ok(content["entries"].as_array().unwrap().to_vec())
     }
 
-    pub async fn get_entry(&self, id: i32) -> Result<Value, Box<dyn std::error::Error>> {
-        let url = format!("https://{}/v1/entries/{}", self.url, id);
-        let client = Client::new();
-        let response = client
-            .get(&url)
-            .query(&[("status", "unread")])
-            .header("X-Auth-Token", &self.token)
-            .send()
-            .await?;
-        Ok(response.json::<serde_json::Value>().await?)
-    }
-
     pub async fn refresh_all_feeds(&self) -> Result<(), Box<dyn std::error::Error>> {
         let url = format!("https://{}/v1/feeds/refresh", self.url);
         let client = Client::new();
@@ -63,7 +51,11 @@ impl MinifluxClient {
         Ok(())
     }
 
-    pub async fn mark_as_read(&self, entry_ids: Vec<u64>) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn mark_as_read(&self, entry_id: u64) -> Result<(), Box<dyn std::error::Error>> {
+        self.mark_as_read_some(vec![entry_id]).await
+    }
+
+    pub async fn mark_as_read_some(&self, entry_ids: Vec<u64>) -> Result<(), Box<dyn std::error::Error>> {
         let url = format!("https://{}/v1/entries", self.url);
         let client = Client::new();
         let data = Data {
