@@ -32,7 +32,6 @@ async fn main() {
             error!("Error: {}", e);
         }
         let entries = miniflux.get_entries().await;
-        let mut ids: Vec<u64> = Vec::new();
         match entries {
             Ok(entries) => {
                 for entry in entries.as_slice() {
@@ -40,14 +39,16 @@ async fn main() {
                     let id = entry["id"].as_u64().unwrap_or(0);
                     let title = entry["title"].as_str().unwrap_or("No title");
                     let url = entry["url"].as_str().unwrap_or("No URL");
-                    let content = entry["content"].as_str().unwrap_or("No content");
+                    let resume = entry["content"].as_str().unwrap_or("No content");
                     let author = entry["author"].as_str().unwrap_or("No author");
                     let feed = entry["feed"].as_object().unwrap();
                     let feed_title = feed["title"].as_str().unwrap_or("No feed title");
                     let published_at = entry["published_at"].as_str().unwrap_or("No published_at");
-                    let message = format!("<h3><a href=\"{url}\">{title}</a></h3><ul><li>{feed_title}</li><li>{published_at}</li><li>{author}</li></ul><p>{content}</p><hr>");
+                    let content = miniflux.get_content(id).await.unwrap_or("".to_string());
+                    let message = format!("<h3><a href=\"{url}\">{title}</a></h3><ul><li>{feed_title}</li><li>{published_at}</li><li>{author}</li></ul><p>{resume}</p><br><p>{content}</p><hr>");
                     if let Ok(response) = matrix.post(&message).await {
-                         if let Err(response) = miniflux.mark_as_read(id).await{
+                        debug!("Response: {:?}", response);
+                        if let Err(response) = miniflux.mark_as_read(id).await {
                             error!("Error: {}", response);
                         }
                     }

@@ -15,6 +15,12 @@ struct Data {
     status: String
 }
 
+#[derive(Debug, Serialize)]
+struct OneItem {
+    status: String
+}
+
+
 impl MinifluxClient {
 
     pub fn new(url: String, token: String) -> Self {
@@ -51,8 +57,35 @@ impl MinifluxClient {
         Ok(())
     }
 
+    pub async fn get_content(&self, entry_id: u64) -> Result<String, Box<dyn std::error::Error>> {
+        let url = format!("https://{}/v1/entries/{}/fetch-content", self.url, entry_id);
+        let client = Client::new();
+        let response = client
+            .get(&url)
+            .header("X-Auth-Token", &self.token)
+            .send()
+            .await?;
+        let content = response.json::<serde_json::Value>().await?;
+        Ok(content["content"].as_str().unwrap().to_string())
+    }
+
     pub async fn mark_as_read(&self, entry_id: u64) -> Result<(), Box<dyn std::error::Error>> {
-        self.mark_as_read_some(vec![entry_id]).await
+        let url = format!("https://{}/v1/entries/{}", self.url, entry_id);
+        let client = Client::new();
+        let data = OneItem {
+            status: "read".to_string(),
+        };
+        debug!("Data: {:?}", data);
+        let response = client
+            .put(&url)
+            .header("X-Auth-Token", &self.token)
+            .json(&data)
+            .send()
+            .await?;
+        debug!("================");
+        debug!("Response: {:?}", response);
+        debug!("================");
+        Ok(())
     }
 
     pub async fn mark_as_read_some(&self, entry_ids: Vec<u64>) -> Result<(), Box<dyn std::error::Error>> {
