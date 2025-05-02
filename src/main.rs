@@ -45,7 +45,7 @@ async fn main() {
                     let feed_title = feed["title"].as_str().unwrap_or("No feed title");
                     let published_at = entry["published_at"].as_str().unwrap_or("No published_at");
                     let content = miniflux.get_content(id).await.unwrap_or("".to_string());
-                    let message = format!("<h3><a href=\"{url}\">{title}</a></h3><ul><li>{feed_title}</li><li>{published_at}</li><li>{author}</li></ul><p>{resume}</p><br><p>{content}</p><hr>");
+                    let message = format!("<h3><a href=\"{url}\">{title}</a></h3><ul><li>{feed_title}</li><li>{published_at}</li><li>{author}</li></ul><details><summary>{resume}</summary>{content}</details><hr>");
                     if let Ok(response) = matrix.post(&message).await {
                         debug!("Response: {:?}", response);
                         if let Err(response) = miniflux.mark_as_read(id).await {
