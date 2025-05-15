@@ -1,7 +1,7 @@
 mod models;
 
 use models::{MatrixClient, MinifluxClient, Model};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::{env, time};
 use tracing::{debug, error, info};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -84,10 +84,29 @@ async fn main() {
                     match model.process_news(&news).await{
                         Ok(message) => {
                             debug!("Message: {:?}", message);
-                            match matrix.post(&message).await {
-                                Ok(response) => {
-                                    debug!("Response: {:?}", response);
-                                }
+                            match serde_json::from_str::<Value>(&message) {
+                                Ok(value) => {
+                                    debug!("Value: {:?}", value);
+                                    let news = value.get("news")
+                                        .and_then(|v| v.as_array())
+                                        .unwrap_or(&vec![])
+                                        .iter()
+                                        .map(|v| format!(
+                                            "<h3><a href=\"{}\">{}</a></h3><p>{}</p><br>",
+                                            v.get("url").unwrap().as_str().unwrap_or(""),
+                                            v.get("title").unwrap().as_str().unwrap_or(""),
+                                            v.get("summary").unwrap().as_str().unwrap_or("")
+                                        )).collect::<Vec<_>>()
+                                        .join("");
+                                        match matrix.post(&news).await {
+                                            Ok(response) => {
+                                                debug!("Response: {:?}", response);
+                                            }
+                                            Err(e) => {
+                                                error!("Error: {}", e);
+                                            }
+                                        }
+                                },
                                 Err(e) => {
                                     error!("Error: {}", e);
                                 }
