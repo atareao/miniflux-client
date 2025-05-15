@@ -70,20 +70,32 @@ async fn main() {
                         error!("Error: {}", response);
                     }
                 }
-                match model.process_news(&news).await{
-                    Ok(message) => {
-                        debug!("Message: {:?}", message);
-                        match matrix.post(&message).await {
-                            Ok(response) => {
-                                debug!("Response: {:?}", response);
-                            }
-                            Err(e) => {
-                                error!("Error: {}", e);
-                            }
+                if news.is_empty() {
+                    info!("No new entries");
+                    match matrix.post("No hay nuevas noticias").await {
+                        Ok(response) => {
+                            debug!("Response: {:?}", response);
                         }
-                    },
-                    Err(e) => {
-                        error!("Error: {}", e);
+                        Err(e) => {
+                            error!("Error: {}", e);
+                        }
+                    }
+                }else{
+                    match model.process_news(&news).await{
+                        Ok(message) => {
+                            debug!("Message: {:?}", message);
+                            match matrix.post(&message).await {
+                                Ok(response) => {
+                                    debug!("Response: {:?}", response);
+                                }
+                                Err(e) => {
+                                    error!("Error: {}", e);
+                                }
+                            }
+                        },
+                        Err(e) => {
+                            error!("Error: {}", e);
+                        }
                     }
                 }
             }
