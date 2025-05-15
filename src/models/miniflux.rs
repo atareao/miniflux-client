@@ -70,22 +70,7 @@ impl MinifluxClient {
     }
 
     pub async fn mark_as_read(&self, entry_id: u64) -> Result<(), Box<dyn std::error::Error>> {
-        let url = format!("https://{}/v1/entries/{}", self.url, entry_id);
-        let client = Client::new();
-        let data = OneItem {
-            status: "read".to_string(),
-        };
-        debug!("Data: {:?}", data);
-        let response = client
-            .put(&url)
-            .header("X-Auth-Token", &self.token)
-            .json(&data)
-            .send()
-            .await?;
-        debug!("================");
-        debug!("Response: {:?}", response);
-        debug!("================");
-        Ok(())
+        self.mark_as_read_some(vec![entry_id]).await
     }
 
     pub async fn mark_as_read_some(&self, entry_ids: Vec<u64>) -> Result<(), Box<dyn std::error::Error>> {
@@ -113,19 +98,11 @@ impl MinifluxClient {
 mod test {
     use super::MinifluxClient;
     use dotenv::dotenv;
-    use tracing_subscriber::{
-        EnvFilter,
-        layer::SubscriberExt,
-        util::SubscriberInitExt
-    };
     use tracing::debug;
 
     #[tokio::test]
     async fn read_entries() {
         dotenv().ok();
-        tracing_subscriber::registry()
-            .with(EnvFilter::from_default_env())
-            .init();
         let miniflux = MinifluxClient::new(
             std::env::var("MINIFLUX_URL").expect("MINIFLUX_URL is mandatory"),
             std::env::var("MINIFLUX_TOKEN").expect("MINIFLUX_TOKEN is mandatory"),

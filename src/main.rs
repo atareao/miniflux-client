@@ -1,6 +1,7 @@
 mod models;
 
-use models::{MatrixClient, MinifluxClient};
+use models::{MatrixClient, MinifluxClient, Model};
+use serde_json::json;
 use std::{env, time};
 use tracing::{debug, error, info};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -27,6 +28,18 @@ async fn main() {
         env::var("MATRIX_TOKEN").expect("MATRIX_TOKEN is mandatory"),
         env::var("MATRIX_ROOM").expect("MATRIX_ROOM is mandatory"),
     );
+    let model = Model::new(
+        std::env::var("MODEL_URL").expect("MODEL_URL is mandatory"),
+        std::env::var("MODEL_API_KEY").expect("MODEL_API_KEY is mandatory"),
+        std::env::var("MODEL_NAME").expect("MODEL_NAME is mandatory"),
+        std::env::var("MODEL_VERSION").expect("MODEL_VERSION is mandatory"),
+        std::env::var("MODEL_DESCRIPTION").expect("MODEL_DESCRIPTION is mandatory"),
+        std::env::var("MODEL_PROMPT").expect("MODEL_PROMPT is mandatory"),
+        std::env::var("MAX_TOKENS")
+            .expect("MAX_TOKENS is mandatory")
+            .parse::<u32>()
+            .unwrap(),
+    );
     loop {
         if let Err(e) = miniflux.refresh_all_feeds().await {
             error!("Error: {}", e);
@@ -34,6 +47,7 @@ async fn main() {
         let entries = miniflux.get_entries().await;
         match entries {
             Ok(entries) => {
+                let mut news = Vec::new();
                 for entry in entries.as_slice() {
                     debug!("Entry: {}", entry);
                     let id = entry["id"].as_u64().unwrap_or(0);
@@ -44,23 +58,32 @@ async fn main() {
                     let feed = entry["feed"].as_object().unwrap();
                     let feed_title = feed["title"].as_str().unwrap_or("No feed title");
                     let published_at = entry["published_at"].as_str().unwrap_or("No published_at");
-                    let message = format!(
-                        "<h3><a href=\"{url}\">{title}</a></h3>
-                        <ul>
-                            <li>{feed_title}</li>
-                            <li>{published_at}</li>
-                            <li>{author}</li>
-                        </ul>
-                        <p>
-                        {resume}
-                        </p>
-                        <hr>"
-                    );
-                    if let Ok(response) = matrix.post(&message).await {
-                        debug!("Response: {:?}", response);
-                        if let Err(response) = miniflux.mark_as_read(id).await {
-                            error!("Error: {}", response);
+                    news.push(json!({
+                        "url": url,
+                        "title": title,
+                        "feed_title": feed_title,
+                        "published_at": published_at,
+                        "author": author,
+                        "resume": resume,
+                    }));
+                    if let Err(response) = miniflux.mark_as_read(id).await {
+                        error!("Error: {}", response);
+                    }
+                }
+                match model.process_news(&news).await{
+                    Ok(message) => {
+                        debug!("Message: {:?}", message);
+                        match matrix.post(&message).await {
+                            Ok(response) => {
+                                debug!("Response: {:?}", response);
+                            }
+                            Err(e) => {
+                                error!("Error: {}", e);
+                            }
                         }
+                    },
+                    Err(e) => {
+                        error!("Error: {}", e);
                     }
                 }
             }

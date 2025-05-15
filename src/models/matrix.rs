@@ -95,7 +95,14 @@ mod test {
             std::env::var("MATRIX_TOKEN").expect("MATRIX_TOKEN is mandatory"),
             std::env::var("MATRIX_ROOM").expect("MATRIX_ROOM is mandatory"),
         );
-        let response = matrix.post("Hello world").await;
+        let response = matrix.post("Hola mundo").await;
+        println!("Response: {:?}", response);
+        let message = "<h3>Ejemplo</h3><details><summary>Organizadores del festival destrozados</summary><p>Una rampa de coche mató a 11 personas en un festival de Vancouver, dejando a la comunidad en profundo dolor</p></details>";
+        let response = matrix.post(message).await;
+        println!("Response: {:?}", response);
+        let message = "<h3>Noticias Internacionales</h3><ul><li>Organizadores del festival destrozados: Una rampa de coche mató a 11 personas en un festival de Vancouver, dejando a la comunidad en profundo dolor.</li><li>Juicio a los \"ladrones abuelos\": Sospechosos acusados de robar a Kim Kardashian a punta de pistola en París en octubre de 2016, quienes sorprendentemente ni siquiera sabían quién era ella.</li><li>Elecciones en el Ártico canadiense: Nunavut presenta desafíos únicos para realizar elecciones debido a su cultura, paisaje y clima extremo.</li><li>Los primeros 100 días de Trump: Un análisis sobre cómo las acciones del presidente están transformando rápidamente diversos aspectos de la vida estadounidense.</li></ul>";
+        let response = matrix.post(message).await;
+        debug!("Response: {:?}", response);
         println!("Response: {:?}", response);
         assert!(response.is_ok());
     }
