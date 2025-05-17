@@ -23,6 +23,27 @@ async fn main() {
         env::var("MINIFLUX_URL").expect("MINIFLUX_URL is mandatory"),
         env::var("MINIFLUX_TOKEN").expect("MINIFLUX_TOKEN is mandatory"),
     );
+    let miniflux_categories = miniflux.get_categories().await;
+    debug!("Miniflux categories: {:?}", miniflux_categories);
+    let categories = match env::var("MINIFLUX_CATEGORIES").ok() {
+        Some(categories) => categories
+            .split(',')
+            .map(|s| {
+                let name = s.trim().to_string().to_lowercase();
+                miniflux_categories
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                    .find(|c| c["title"].as_str().unwrap().to_lowercase() == name)
+            })
+            .collect::<Vec<_>>()
+            .iter()
+            .filter(|item| item.is_some())
+            .map(|item| item.unwrap()["id"].as_i64().unwrap())
+            .collect::<Vec<_>>(),
+        None => Vec::new(),
+    };
+    debug!("Categories: {:?}", categories);
     let matrix = MatrixClient::new(
         env::var("MATRIX_URL").expect("MATRIX_URL is mandatory"),
         env::var("MATRIX_TOKEN").expect("MATRIX_TOKEN is mandatory"),
@@ -44,82 +65,100 @@ async fn main() {
         if let Err(e) = miniflux.refresh_all_feeds().await {
             error!("Error: {}", e);
         }
-        let entries = miniflux.get_entries().await;
-        match entries {
-            Ok(entries) => {
-                let mut news = Vec::new();
-                for entry in entries.as_slice() {
-                    debug!("Entry: {}", entry);
-                    let id = entry["id"].as_u64().unwrap_or(0);
-                    let title = entry["title"].as_str().unwrap_or("No title");
-                    let url = entry["url"].as_str().unwrap_or("No URL");
-                    let resume = entry["content"].as_str().unwrap_or("No content");
-                    let author = entry["author"].as_str().unwrap_or("No author");
-                    let feed = entry["feed"].as_object().unwrap();
-                    let feed_title = feed["title"].as_str().unwrap_or("No feed title");
-                    let published_at = entry["published_at"].as_str().unwrap_or("No published_at");
-                    news.push(json!({
-                        "url": url,
-                        "title": title,
-                        "feed_title": feed_title,
-                        "published_at": published_at,
-                        "author": author,
-                        "resume": resume,
-                    }));
-                    if let Err(response) = miniflux.mark_as_read(id).await {
-                        error!("Error: {}", response);
+        let entries = if categories.is_empty() {
+            match miniflux.get_entries().await {
+                Ok(entries) => {
+                    debug!("Entries: {:?}", entries);
+                    entries
+                }
+                Err(e) => {
+                    error!("Error: {}", e);
+                    Vec::new()
+                }
+            }
+        }else{
+            let mut entries = Vec::new();
+            for category in categories.iter() {
+                match miniflux.get_category_entries(*category as i32).await {
+                    Ok(entries_category) => {
+                        entries.extend(entries_category.clone());
+                    },
+                    Err(e) => {
+                        error!("Error: {}", e);
                     }
                 }
-                if news.is_empty() {
-                    info!("No new entries");
-                    match matrix.post("No hay nuevas noticias").await {
-                        Ok(response) => {
-                            debug!("Response: {:?}", response);
-                        }
-                        Err(e) => {
-                            error!("Error: {}", e);
-                        }
-                    }
-                }else{
-                    match model.process_news(&news).await{
-                        Ok(message) => {
-                            debug!("Message: {:?}", message);
-                            match serde_json::from_str::<Value>(&message) {
-                                Ok(value) => {
-                                    debug!("Value: {:?}", value);
-                                    let news = value.get("news")
-                                        .and_then(|v| v.as_array())
-                                        .unwrap_or(&vec![])
-                                        .iter()
-                                        .map(|v| format!(
-                                            "<h3><a href=\"{}\">{}</a></h3><p>{}</p><br>",
-                                            v.get("url").unwrap().as_str().unwrap_or(""),
-                                            v.get("title").unwrap().as_str().unwrap_or(""),
-                                            v.get("summary").unwrap().as_str().unwrap_or("")
-                                        )).collect::<Vec<_>>()
-                                        .join("");
-                                        match matrix.post(&news).await {
-                                            Ok(response) => {
-                                                debug!("Response: {:?}", response);
-                                            }
-                                            Err(e) => {
-                                                error!("Error: {}", e);
-                                            }
-                                        }
-                                },
-                                Err(e) => {
-                                    error!("Error: {}", e);
+            }
+            entries
+
+        };
+        let mut news = Vec::new();
+        for entry in entries.as_slice() {
+            debug!("Entry: {}", entry);
+            let id = entry["id"].as_u64().unwrap_or(0);
+            let title = entry["title"].as_str().unwrap_or("No title");
+            let url = entry["url"].as_str().unwrap_or("No URL");
+            let resume = entry["content"].as_str().unwrap_or("No content");
+            let author = entry["author"].as_str().unwrap_or("No author");
+            let feed = entry["feed"].as_object().unwrap();
+            let feed_title = feed["title"].as_str().unwrap_or("No feed title");
+            let published_at = entry["published_at"].as_str().unwrap_or("No published_at");
+            news.push(json!({
+                "url": url,
+                "title": title,
+                "feed_title": feed_title,
+                "published_at": published_at,
+                "author": author,
+                "resume": resume,
+            }));
+            if let Err(response) = miniflux.mark_as_read(id).await {
+                error!("Error: {}", response);
+            }
+        }
+        if news.is_empty() {
+            info!("No new entries");
+            match matrix.post("No hay nuevas noticias").await {
+                Ok(response) => {
+                    debug!("Response: {:?}", response);
+                }
+                Err(e) => {
+                    error!("Error: {}", e);
+                }
+            }
+        }else{
+            match model.process_news(&news).await{
+                Ok(message) => {
+                    debug!("Message: {:?}", message);
+                    match serde_json::from_str::<Value>(&message) {
+                        Ok(value) => {
+                            debug!("Value: {:?}", value);
+                            let news = value.get("news")
+                                .and_then(|v| v.as_array())
+                                .unwrap_or(&vec![])
+                                .iter()
+                                .map(|v| format!(
+                                    "<h3><a href=\"{}\">{}</a></h3><p>{}</p><br>",
+                                    v.get("url").unwrap().as_str().unwrap_or(""),
+                                    v.get("title").unwrap().as_str().unwrap_or(""),
+                                    v.get("summary").unwrap().as_str().unwrap_or("")
+                                )).collect::<Vec<_>>()
+                                .join("");
+                                match matrix.post(&news).await {
+                                    Ok(response) => {
+                                        debug!("Response: {:?}", response);
+                                    }
+                                    Err(e) => {
+                                        error!("Error: {}", e);
+                                    }
                                 }
-                            }
                         },
                         Err(e) => {
                             error!("Error: {}", e);
                         }
                     }
+                },
+                Err(e) => {
+                    error!("Error: {}", e);
                 }
-            }
-            Err(e) => {
-                error!("Error: {}", e);
             }
         }
         info!("Sleeping for {:?} seconds", sleep_time);
