@@ -8,47 +8,38 @@ pub struct Model {
     url: String,
     api_key: String,
     model: String,
-    version: String,
     model_description: String,
     prompt: String,
-    max_tokens: u32,
 }
 
 impl Model {
-    pub fn new(url: String, api_key: String, model: String, version: String,
-            model_description: String, prompt: String, max_tokens: u32) -> Self {
+    pub fn new(url: String, api_key: String, model: String,
+            model_description: String, prompt: String) -> Self {
         Model {
             url,
             api_key,
             model,
-            version,
             model_description,
             prompt,
-            max_tokens,
         }
     }
 
     pub async fn process_news(&self, news: &Vec<Value>) -> Result<String, Box<dyn std::error::Error>> {
         debug!("Processing news...");
-        let url = format!("{}/v1/messages", self.url);
+        let url = format!("{}/v1/chat/completions", self.url);
         debug!("URL: {}", url);
         let content = json!({
             "model": self.model,
-            "max_tokens": self.max_tokens,
-            "system": [
-                {
-                    "type": "text",
-                    "text": &self.model_description
-                },
-                {
-                    "type": "text",
-                    "text": serde_json::to_string(news)?
-                }
-            ],
             "messages": [
                 {
+                    "role": "assistant",
+                    "content": &self.model_description
+                },
+                {
                     "role": "user",
-                    "content": &self.prompt
+                    "content": format!("{}. Noticias: {}",
+                        &self.prompt,
+                        serde_json::to_string(news)?)
                 }
             ]
         });
@@ -56,8 +47,7 @@ impl Model {
         let response = client
             .post(&url)
             .header("content-type", "application/json")
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", &self.version)
+            .header("Authorization", format!("Bearer {}",&self.api_key))
             .json(&content)
             .send()
             .await?;
@@ -65,14 +55,16 @@ impl Model {
         println!("Response: {:?}", response);
         //{"content": Array [Object {"text": String("
         let content = response
-            .get("content")
+            .get("choices")
             .ok_or("No content")?
             .as_array()
             .ok_or("No array")?
             .first()
             .ok_or("No first element")?
-            .get("text")
-            .ok_or("No text")?
+            .get("message")
+            .ok_or("No message")?
+            .get("content")
+            .ok_or("No content")?
             .as_str()
             .ok_or("No string")?;
         println!("Response: {:?}", content);
@@ -87,21 +79,16 @@ impl Model {
         debug!("URL: {}", url);
         let content = json!({
             "model": self.model,
-            "max_tokens": self.max_tokens,
-            "system": [
-                {
-                    "type": "text",
-                    "text": &self.model_description
-                },
-                {
-                    "type": "text",
-                    "text": news
-                }
-            ],
             "messages": [
                 {
+                    "role": "assistant",
+                    "content": &self.model_description
+                },
+                {
                     "role": "user",
-                    "content": &self.prompt
+                    "content": format!("{}. Noticias: {}",
+                        &self.prompt,
+                        serde_json::to_string(news)?)
                 }
             ]
         });
@@ -109,8 +96,7 @@ impl Model {
         let response = client
             .post(&url)
             .header("content-type", "application/json")
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", &self.version)
+            .header("Authorization", format!("Bearer {}",&self.api_key))
             .json(&content)
             .send()
             .await?;
@@ -124,8 +110,10 @@ impl Model {
             .ok_or("No array")?
             .first()
             .ok_or("No first element")?
-            .get("text")
-            .ok_or("No text")?
+            .get("message")
+            .ok_or("No message")?
+            .get("content")
+            .ok_or("No content")?
             .as_str()
             .ok_or("No string")?;
         println!("Response: {:?}", content);
@@ -147,11 +135,8 @@ mod model_test {
             std::env::var("MODEL_URL").expect("MODEL_URL is mandatory"),
             std::env::var("MODEL_API_KEY").expect("MODEL_API_KEY is mandatory"),
             std::env::var("MODEL_NAME").expect("MODEL_NAME is mandatory"),
-            std::env::var("MODEL_VERSION").expect("MODEL_VERSION is mandatory"),
             std::env::var("MODEL_DESCRIPTION").expect("MODEL_DESCRIPTION is mandatory"),
             std::env::var("MODEL_PROMPT").expect("MODEL_PROMPT is mandatory"),
-            std::env::var("MAX_TOKENS").expect("MAX_TOKENS is mandatory")
-            .parse::<u32>().unwrap(),
         );
         let news = r#"
 <?xml version="1.0" encoding="UTF-8"?><rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0" xmlns:media="http://search.yahoo.com/mrss/">

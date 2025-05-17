@@ -53,13 +53,8 @@ async fn main() {
         std::env::var("MODEL_URL").expect("MODEL_URL is mandatory"),
         std::env::var("MODEL_API_KEY").expect("MODEL_API_KEY is mandatory"),
         std::env::var("MODEL_NAME").expect("MODEL_NAME is mandatory"),
-        std::env::var("MODEL_VERSION").expect("MODEL_VERSION is mandatory"),
         std::env::var("MODEL_DESCRIPTION").expect("MODEL_DESCRIPTION is mandatory"),
         std::env::var("MODEL_PROMPT").expect("MODEL_PROMPT is mandatory"),
-        std::env::var("MAX_TOKENS")
-            .expect("MAX_TOKENS is mandatory")
-            .parse::<u32>()
-            .unwrap(),
     );
     loop {
         if let Err(e) = miniflux.refresh_all_feeds().await {
