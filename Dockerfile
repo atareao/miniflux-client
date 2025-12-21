@@ -1,7 +1,7 @@
 ###############################################################################
 ## Builder
 ###############################################################################
-FROM rust:alpine3.21 AS builder
+FROM rust:alpine3.23 AS builder
 
 LABEL maintainer="Lorenzo Carbonell <a.k.a. atareao> lorenzo.carbonell.cerezo@gmail.com"
 
@@ -23,7 +23,7 @@ RUN cargo build --release && \
 ###############################################################################
 ## Final image
 ###############################################################################
-FROM alpine:3.21
+FROM alpine:3.23
 
 ENV USER=app
 ENV UID=10001

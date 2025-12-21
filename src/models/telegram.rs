@@ -10,6 +10,14 @@ pub struct TelegramClient{
     thread_id: String,
 }
 
+#[derive(Serialize)]
+struct TelegramMessage {
+    message_thread_id: String,
+    chat_id: String,
+    text: String,
+    parse_mode: String,
+}
+
 fn default_thread_id() -> String{
     "0".to_string()
 }
@@ -28,15 +36,15 @@ impl TelegramClient{
     pub async fn send_message(&self, message: &str) -> Result<String, reqwest::Error>{
         debug!("Sending Telegram message: {}", message);
         let url = format!("{URL}/bot{}/sendMessage", self.token);
-        let params = vec![
-            ("chat_id", self.chat_id.as_str()),
-            ("message_thread_id", self.thread_id.as_str()),
-            ("text", message),
-            ("parse_mode", "MarkdownV2"),
-        ];
+        let payload = TelegramMessage{
+            message_thread_id: self.thread_id.clone(),
+            chat_id: self.chat_id.clone(),
+            text: message.into(),
+            parse_mode: "MarkdownV2".into(),
+        };
         Client::new()
             .post(url)
-            .form(&params)
+            .json(&payload)
             .send()
             .await?
             .error_for_status()?
@@ -44,6 +52,8 @@ impl TelegramClient{
             .await
     }
 }
+
+
 
 #[cfg(test)]
 mod test{
@@ -75,6 +85,8 @@ mod test{
             .expect("Cant convert thread_id");
         let telegram = TelegramClient::new(token, chat_id, thread_id);
         assert!(telegram.send_message("Prueba").await.is_ok());
+        let message = "*[atareao.es](https://atareao.es)*\nOrigen\n\n";
+        assert!(telegram.send_message(message).await.is_ok());
     }
 }
 

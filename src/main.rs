@@ -157,9 +157,9 @@ async fn main() {
                                 .iter()
                                 .map(|v| format!(
                                     "*[{}]({})\n{}\n\n",
-                                    v.get("title").unwrap().as_str().unwrap_or(""),
-                                    v.get("url").unwrap().as_str().unwrap_or(""),
-                                    v.get("summary").unwrap().as_str().unwrap_or("")
+                                    escape(v.get("title").unwrap().as_str().unwrap_or("")),
+                                    escape(v.get("url").unwrap().as_str().unwrap_or("")),
+                                    escape(v.get("summary").unwrap().as_str().unwrap_or(""))
                                 )).collect::<Vec<_>>()
                                 .join("");
                             match telegram.send_message(&telegram_news).await {
@@ -184,4 +184,16 @@ async fn main() {
         info!("Sleeping for {:?} seconds", sleep_time);
         tokio::time::sleep(sleep_time).await;
     }
+}
+
+fn escape(text: &str) -> String {
+    let reserved = r#"_*[]()~`>#+-=|{}.!"#;
+    let mut escaped = String::new();
+    for c in text.chars() {
+        if reserved.contains(c) {
+            escaped.push('\\');
+        }
+        escaped.push(c);
+    }
+    escaped
 }

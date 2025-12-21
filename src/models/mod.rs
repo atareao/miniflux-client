@@ -4,8 +4,6 @@ mod telegram;
 mod model;
 
 pub use telegram::TelegramClient;
-mod model;
-
 pub use matrix::MatrixClient;
 pub use miniflux::MinifluxClient;
 pub use model::Model;
