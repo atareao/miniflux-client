@@ -20,6 +20,8 @@ struct OneItem {
     status: String
 }
 
+const MAX_ENTRIES: usize = 10;
+
 
 impl MinifluxClient {
 
@@ -38,6 +40,14 @@ impl MinifluxClient {
             .header("X-Auth-Token", &self.token)
             .send()
             .await?;
+        
+        let status = response.status();
+        if !status.is_success() {
+            let error_body = response.text().await.unwrap_or_else(|_| "Unable to read error body".to_string());
+            debug!("Miniflux API error (get_categories) - Status: {}, Body: {}", status, error_body);
+            return Err(format!("Miniflux API error: {}", error_body).into());
+        }
+        
         let content = response.json::<serde_json::Value>().await?;
         Ok(content.as_array().unwrap().to_vec())
     }
@@ -52,6 +62,14 @@ impl MinifluxClient {
             .header("X-Auth-Token", &self.token)
             .send()
             .await?;
+        
+        let status = response.status();
+        if !status.is_success() {
+            let error_body = response.text().await.unwrap_or_else(|_| "Unable to read error body".to_string());
+            debug!("Miniflux API error (get_category_entries) - Status: {}, Body: {}", status, error_body);
+            return Err(format!("Miniflux API error: {}", error_body).into());
+        }
+        
         let content = response.json::<serde_json::Value>().await?;
         Ok(content["entries"].as_array().unwrap().to_vec())
     }
@@ -61,10 +79,21 @@ impl MinifluxClient {
         let client = Client::new();
         let response = client
             .get(&url)
-            .query(&[("status", "unread")])
+            .query(&[
+                ("status", "unread"),
+                ("limit", &MAX_ENTRIES.to_string()),
+                ])
             .header("X-Auth-Token", &self.token)
             .send()
             .await?;
+        
+        let status = response.status();
+        if !status.is_success() {
+            let error_body = response.text().await.unwrap_or_else(|_| "Unable to read error body".to_string());
+            debug!("Miniflux API error (get_entries) - Status: {}, Body: {}", status, error_body);
+            return Err(format!("Miniflux API error: {}", error_body).into());
+        }
+        
         let content = response.json::<serde_json::Value>().await?;
         Ok(content["entries"].as_array().unwrap().to_vec())
     }
@@ -77,9 +106,15 @@ impl MinifluxClient {
             .header("X-Auth-Token", &self.token)
             .send()
             .await?;
-        debug!("================");
-        debug!("Response: {:?}", response);
-        debug!("================");
+        
+        let status = response.status();
+        if !status.is_success() {
+            let error_body = response.text().await.unwrap_or_else(|_| "Unable to read error body".to_string());
+            debug!("Miniflux API error (refresh_all_feeds) - Status: {}, Body: {}", status, error_body);
+            return Err(format!("Miniflux API error: {}", error_body).into());
+        } else {
+            debug!("All feeds refreshed successfully");
+        }
         Ok(())
     }
 
@@ -91,6 +126,14 @@ impl MinifluxClient {
             .header("X-Auth-Token", &self.token)
             .send()
             .await?;
+        
+        let status = response.status();
+        if !status.is_success() {
+            let error_body = response.text().await.unwrap_or_else(|_| "Unable to read error body".to_string());
+            debug!("Miniflux API error (get_content) - Status: {}, Body: {}", status, error_body);
+            return Err(format!("Miniflux API error: {}", error_body).into());
+        }
+        
         let content = response.json::<serde_json::Value>().await?;
         Ok(content["content"].as_str().unwrap().to_string())
     }
@@ -106,16 +149,22 @@ impl MinifluxClient {
             entry_ids,
             status: "read".to_string(),
         };
-        debug!("Data: {:?}", data);
+        debug!("Marking entries as read: {:?}", data);
         let response = client
             .put(&url)
             .header("X-Auth-Token", &self.token)
             .json(&data)
             .send()
             .await?;
-        debug!("================");
-        debug!("Response: {:?}", response);
-        debug!("================");
+        
+        let status = response.status();
+        if !status.is_success() {
+            let error_body = response.text().await.unwrap_or_else(|_| "Unable to read error body".to_string());
+            debug!("Miniflux API error (mark_as_read) - Status: {}, Body: {}", status, error_body);
+            return Err(format!("Miniflux API error: {}", error_body).into());
+        } else {
+            debug!("Entries marked as read successfully");
+        }
         Ok(())
     }
 }
@@ -166,6 +215,39 @@ mod test {
         println!("Entries: {:?}", entries);
         debug!("Entries: {:?}", entries);
         assert!(entries.is_ok());
+    }
+
+    #[test]
+    fn test_miniflux_client_creation() {
+        let url = "example.com".to_string();
+        let token = "test_token".to_string();
+        let client = MinifluxClient::new(url.clone(), token.clone());
+        assert_eq!(client.url, url);
+        assert_eq!(client.token, token);
+    }
+
+    #[test]
+    fn test_miniflux_client_clone() {
+        let client = MinifluxClient::new("example.com".to_string(), "token".to_string());
+        let cloned = client.clone();
+        assert_eq!(client.url, cloned.url);
+        assert_eq!(client.token, cloned.token);
+    }
+
+    #[test]
+    fn test_miniflux_client_serialize() {
+        let client = MinifluxClient::new("example.com".to_string(), "token123".to_string());
+        let serialized = serde_json::to_string(&client).unwrap();
+        assert!(serialized.contains("example.com"));
+        assert!(serialized.contains("token123"));
+    }
+
+    #[test]
+    fn test_miniflux_client_deserialize() {
+        let json = r#"{"url":"example.com","token":"token123"}"#;
+        let client: MinifluxClient = serde_json::from_str(json).unwrap();
+        assert_eq!(client.url, "example.com");
+        assert_eq!(client.token, "token123");
     }
 
 }

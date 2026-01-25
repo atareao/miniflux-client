@@ -64,7 +64,7 @@ async fn main() {
     );
     loop {
         if let Err(e) = miniflux.refresh_all_feeds().await {
-            error!("Error: {}", e);
+            error!("Error refreshing Miniflux feeds: {}", e);
         }
         let entries = if categories.is_empty() {
             match miniflux.get_entries().await {
@@ -73,7 +73,7 @@ async fn main() {
                     entries
                 }
                 Err(e) => {
-                    error!("Error: {}", e);
+                    error!("Error getting entries from Miniflux: {}", e);
                     Vec::new()
                 }
             }
@@ -85,7 +85,7 @@ async fn main() {
                         entries.extend(entries_category.clone());
                     },
                     Err(e) => {
-                        error!("Error: {}", e);
+                        error!("Error getting entries from category {}: {}", category, e);
                     }
                 }
             }
@@ -112,17 +112,17 @@ async fn main() {
                 "resume": resume,
             }));
             if let Err(response) = miniflux.mark_as_read(id).await {
-                error!("Error: {}", response);
+                error!("Error marking entry {} as read: {}", id, response);
             }
         }
         if news.is_empty() {
             info!("No new entries");
             match matrix.post("No hay nuevas noticias").await {
                 Ok(response) => {
-                    debug!("Response: {:?}", response);
+                    debug!("Matrix response: {:?}", response);
                 }
                 Err(e) => {
-                    error!("Error: {}", e);
+                    error!("Error sending message to Matrix: {}", e);
                 }
             }
         }else{
@@ -145,10 +145,10 @@ async fn main() {
                                 .join("");
                             match matrix.post(&news).await {
                                 Ok(response) => {
-                                    debug!("Response: {:?}", response);
+                                    debug!("Matrix response: {:?}", response);
                                 }
                                 Err(e) => {
-                                    error!("Error: {}", e);
+                                    error!("Error sending news to Matrix: {}", e);
                                 }
                             }
                             let telegram_news = value.get("news")
@@ -164,10 +164,10 @@ async fn main() {
                                 .join("");
                             match telegram.send_message(&telegram_news).await {
                                 Ok(response) => {
-                                    debug!("Response: {:?}", response);
+                                    debug!("Telegram response: {:?}", response);
                                 }
                                 Err(e) => {
-                                    error!("Error: {}", e);
+                                    error!("Error sending message to Telegram: {}", e);
                                 }
                             }
                         },
@@ -196,4 +196,51 @@ fn escape(text: &str) -> String {
         escaped.push(c);
     }
     escaped
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_escape_simple_text() {
+        let text = "hello world";
+        let result = escape(text);
+        assert_eq!(result, "hello world");
+    }
+
+    #[test]
+    fn test_escape_text_with_markdown_chars() {
+        let text = "hello*world";
+        let result = escape(text);
+        assert_eq!(result, "hello\\*world");
+    }
+
+    #[test]
+    fn test_escape_text_with_multiple_special_chars() {
+        let text = "_bold_ *italic* [link](url)";
+        let result = escape(text);
+        assert_eq!(result, "\\_bold\\_ \\*italic\\* \\[link\\]\\(url\\)");
+    }
+
+    #[test]
+    fn test_escape_empty_string() {
+        let text = "";
+        let result = escape(text);
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_escape_all_special_chars() {
+        let text = "_*[]()~`>#+-=|{}.!";
+        let result = escape(text);
+        assert_eq!(result, "\\_\\*\\[\\]\\(\\)\\~\\`\\>\\#\\+\\-\\=\\|\\{\\}\\.\\!");
+    }
+
+    #[test]
+    fn test_escape_mixed_content() {
+        let text = "Price: $100 + tax";
+        let result = escape(text);
+        assert_eq!(result, "Price: $100 \\+ tax");
+    }
 }

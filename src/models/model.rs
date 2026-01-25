@@ -128,6 +128,76 @@ mod model_test {
     use dotenv::dotenv;
     use tracing::debug;
 
+    #[test]
+    fn test_model_creation() {
+        let url = "https://api.example.com".to_string();
+        let api_key = "test_key".to_string();
+        let model_name = "gpt-4".to_string();
+        let description = "Test model".to_string();
+        let prompt = "Summarize".to_string();
+        
+        let model = Model::new(
+            url.clone(),
+            api_key.clone(),
+            model_name.clone(),
+            description.clone(),
+            prompt.clone(),
+        );
+        
+        assert_eq!(model.url, url);
+        assert_eq!(model.api_key, api_key);
+        assert_eq!(model.model, model_name);
+        assert_eq!(model.model_description, description);
+        assert_eq!(model.prompt, prompt);
+    }
+
+    #[test]
+    fn test_model_clone() {
+        let model = Model::new(
+            "url".to_string(),
+            "key".to_string(),
+            "model".to_string(),
+            "desc".to_string(),
+            "prompt".to_string(),
+        );
+        let cloned = model.clone();
+        assert_eq!(model.url, cloned.url);
+        assert_eq!(model.api_key, cloned.api_key);
+        assert_eq!(model.model, cloned.model);
+    }
+
+    #[test]
+    fn test_model_serialize() {
+        let model = Model::new(
+            "https://api.test.com".to_string(),
+            "key123".to_string(),
+            "gpt-3.5".to_string(),
+            "description".to_string(),
+            "prompt".to_string(),
+        );
+        let serialized = serde_json::to_string(&model).unwrap();
+        assert!(serialized.contains("https://api.test.com"));
+        assert!(serialized.contains("key123"));
+        assert!(serialized.contains("gpt-3.5"));
+    }
+
+    #[test]
+    fn test_model_deserialize() {
+        let json = r#"{
+            "url":"https://api.test.com",
+            "api_key":"key123",
+            "model":"gpt-4",
+            "model_description":"Test",
+            "prompt":"Summarize this"
+        }"#;
+        let model: Model = serde_json::from_str(json).unwrap();
+        assert_eq!(model.url, "https://api.test.com");
+        assert_eq!(model.api_key, "key123");
+        assert_eq!(model.model, "gpt-4");
+        assert_eq!(model.model_description, "Test");
+        assert_eq!(model.prompt, "Summarize this");
+    }
+
     #[tokio::test]
     async fn process_news() {
         dotenv().ok();

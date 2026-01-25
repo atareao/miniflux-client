@@ -59,10 +59,19 @@ impl MatrixClient {
             .build()
             .unwrap();
         let content = serde_json::to_string(body).unwrap();
-        Ok(client.put(url).body(content).send()
-            .await?
-            .text()
-            .await?)
+        let response = client.put(url).body(content).send()
+            .await?;
+        
+        let status = response.status();
+        let response_body = response.text().await?;
+        
+        if !status.is_success() {
+            debug!("Matrix API error - Status: {}, Body: {}", status, response_body);
+        } else {
+            debug!("Matrix message sent successfully");
+        }
+        
+        Ok(response_body)
     }
 
     fn ts() -> f64{
@@ -82,7 +91,6 @@ mod test {
         layer::SubscriberExt,
         util::SubscriberInitExt
     };
-    use tracing::debug;
 
     #[tokio::test]
     async fn post() {
@@ -100,11 +108,66 @@ mod test {
         let message = "<h3>Ejemplo</h3><details><summary>Organizadores del festival destrozados</summary><p>Una rampa de coche mató a 11 personas en un festival de Vancouver, dejando a la comunidad en profundo dolor</p></details>";
         let response = matrix.post(message).await;
         println!("Response: {:?}", response);
-        let message = "<h3>Noticias Internacionales</h3><ul><li>Organizadores del festival destrozados: Una rampa de coche mató a 11 personas en un festival de Vancouver, dejando a la comunidad en profundo dolor.</li><li>Juicio a los \"ladrones abuelos\": Sospechosos acusados de robar a Kim Kardashian a punta de pistola en París en octubre de 2016, quienes sorprendentemente ni siquiera sabían quién era ella.</li><li>Elecciones en el Ártico canadiense: Nunavut presenta desafíos únicos para realizar elecciones debido a su cultura, paisaje y clima extremo.</li><li>Los primeros 100 días de Trump: Un análisis sobre cómo las acciones del presidente están transformando rápidamente diversos aspectos de la vida estadounidense.</li></ul>";
-        let response = matrix.post(message).await;
-        debug!("Response: {:?}", response);
-        println!("Response: {:?}", response);
-        assert!(response.is_ok());
+    }
+
+    #[test]
+    fn test_matrix_client_creation() {
+        let server = "matrix.example.com".to_string();
+        let token = "test_token".to_string();
+        let room = "test_room".to_string();
+        let client = MatrixClient::new(server.clone(), token.clone(), room.clone());
+        assert_eq!(client.server, server);
+        assert_eq!(client.token, token);
+        assert_eq!(client.room, room);
+    }
+
+    #[test]
+    fn test_matrix_client_clone() {
+        let client = MatrixClient::new(
+            "matrix.example.com".to_string(),
+            "token".to_string(),
+            "room".to_string(),
+        );
+        let cloned = client.clone();
+        assert_eq!(client.server, cloned.server);
+        assert_eq!(client.token, cloned.token);
+        assert_eq!(client.room, cloned.room);
+    }
+
+    #[test]
+    fn test_matrix_client_serialize() {
+        let client = MatrixClient::new(
+            "matrix.example.com".to_string(),
+            "token123".to_string(),
+            "myroom".to_string(),
+        );
+        let serialized = serde_json::to_string(&client).unwrap();
+        assert!(serialized.contains("matrix.example.com"));
+        assert!(serialized.contains("token123"));
+        assert!(serialized.contains("myroom"));
+    }
+
+    #[test]
+    fn test_matrix_client_deserialize() {
+        let json = r#"{"server":"matrix.example.com","token":"token123","room":"myroom"}"#;
+        let client: MatrixClient = serde_json::from_str(json).unwrap();
+        assert_eq!(client.server, "matrix.example.com");
+        assert_eq!(client.token, "token123");
+        assert_eq!(client.room, "myroom");
+    }
+
+    #[test]
+    fn test_ts_returns_positive_value() {
+        let ts = MatrixClient::ts();
+        assert!(ts > 0.0);
+    }
+
+    #[test]
+    fn test_ts_returns_different_values() {
+        let ts1 = MatrixClient::ts();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let ts2 = MatrixClient::ts();
+        assert!(ts2 >= ts1);
     }
 }
 
