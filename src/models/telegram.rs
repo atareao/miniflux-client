@@ -8,6 +8,8 @@ pub struct TelegramClient{
     chat_id: String,
     #[serde(default = "default_thread_id")]
     thread_id: String,
+    #[serde(skip)]
+    pub base_url: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -30,12 +32,26 @@ impl TelegramClient{
             token,
             chat_id,
             thread_id,
+            base_url: None,
         }
+    }
+
+    pub fn with_base_url(token: String, chat_id: String, thread_id: String, base_url: String) -> Self{
+        Self{
+            token,
+            chat_id,
+            thread_id,
+            base_url: Some(base_url),
+        }
+    }
+
+    fn get_base_url(&self) -> &str {
+        self.base_url.as_deref().unwrap_or(URL)
     }
 
     pub async fn send_message(&self, message: &str) -> Result<String, reqwest::Error>{
         debug!("Sending Telegram message: {}", message);
-        let url = format!("{URL}/bot{}/sendMessage", self.token);
+        let url = format!("{}/bot{}/sendMessage", self.get_base_url(), self.token);
         let payload = TelegramMessage{
             message_thread_id: self.thread_id.clone(),
             chat_id: self.chat_id.clone(),
@@ -75,6 +91,7 @@ mod test{
     };
 
     #[tokio::test]
+    #[ignore] // Requiere credenciales reales
     async fn telegram(){
         tracing_subscriber::registry()
             .with(EnvFilter::from_str("debug").unwrap())
@@ -148,6 +165,59 @@ mod test{
         assert_eq!(client.token, "token123");
         assert_eq!(client.chat_id, "chat456");
         assert_eq!(client.thread_id, "thread789");
+    }
+
+    // Tests con mocks
+    #[tokio::test]
+    async fn test_send_message_with_mock() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server.mock("POST", "/bottest_token/sendMessage")
+            .match_body(mockito::Matcher::Json(serde_json::json!({
+                "message_thread_id": "0",
+                "chat_id": "123456",
+                "text": "Test message",
+                "parse_mode": "MarkdownV2"
+            })))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"ok":true,"result":{"message_id":1}}"#)
+            .create_async()
+            .await;
+
+        let client = TelegramClient::with_base_url(
+            "test_token".to_string(),
+            "123456".to_string(),
+            "0".to_string(),
+            server.url(),
+        );
+        
+        let result = client.send_message("Test message").await;
+        assert!(result.is_ok());
+        let body = result.unwrap();
+        assert!(body.contains("\"ok\":true"));
+    }
+
+    #[tokio::test]
+    async fn test_send_message_error_with_mock() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server.mock("POST", "/bottest_token/sendMessage")
+            .with_status(400)
+            .with_body(r#"{"ok":false,"error_code":400,"description":"Bad Request: message is too long"}"#)
+            .create_async()
+            .await;
+
+        let client = TelegramClient::with_base_url(
+            "test_token".to_string(),
+            "123456".to_string(),
+            "0".to_string(),
+            server.url(),
+        );
+        
+        let result = client.send_message("Test message").await;
+        // El resultado es Ok porque reqwest no falla en códigos de error HTTP
+        assert!(result.is_ok());
+        let body = result.unwrap();
+        assert!(body.contains("\"ok\":false"));
     }
 }
 

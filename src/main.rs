@@ -70,7 +70,7 @@ async fn main() {
             error!("Error refreshing Miniflux feeds: {}", e);
         }
         let entries = if categories.is_empty() {
-            match miniflux.get_entries().await {
+            match miniflux.get_entries(MAX_ENTRIES).await {
                 Ok(entries) => {
                     debug!("Entries: {:?}", entries);
                     entries

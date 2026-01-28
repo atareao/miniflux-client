@@ -199,6 +199,7 @@ mod model_test {
     }
 
     #[tokio::test]
+    #[ignore] // Requiere credenciales reales
     async fn process_news() {
         dotenv().ok();
         let model = Model::new(

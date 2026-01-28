@@ -13,6 +13,8 @@ pub struct MatrixClient{
     server: String,
     token: String,
     room: String,
+    #[serde(skip)]
+    pub base_url: Option<String>,
 }
 
 impl MatrixClient {
@@ -22,14 +24,29 @@ impl MatrixClient {
             server,
             token,
             room,
+            base_url: None,
         }
+    }
+
+    pub fn with_base_url(server: String, token: String, room: String, base_url: String) -> Self{
+        MatrixClient{
+            server,
+            token,
+            room,
+            base_url: Some(base_url),
+        }
+    }
+
+    fn get_base_url(&self) -> &str {
+        self.base_url.as_deref().unwrap_or("https")
     }
 
     pub async fn post(&self, message: &str) -> Result<String, CustomError>{
         info!("post_with_matrix");
         debug!("Post with matrix: {}", message);
         let url = format!(
-            "https://{}/_matrix/client/v3/rooms/{}:{}/send/m.room.message/{}",
+            "{}://{}/_matrix/client/v3/rooms/{}:{}/send/m.room.message/{}",
+            self.get_base_url(),
             self.server,
             encode(&self.room),
             self.server,
@@ -93,6 +110,7 @@ mod test {
     };
 
     #[tokio::test]
+    #[ignore] // Requiere credenciales reales
     async fn post() {
         dotenv().ok();
         tracing_subscriber::registry()

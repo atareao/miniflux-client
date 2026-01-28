@@ -7,6 +7,8 @@ use tracing::debug;
 pub struct MinifluxClient {
     pub url: String,
     pub token: String,
+    #[serde(skip)]
+    pub base_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -26,11 +28,24 @@ impl MinifluxClient {
         MinifluxClient {
             url,
             token,
+            base_url: None,
         }
     }
 
+    pub fn with_base_url(url: String, token: String, base_url: String) -> Self {
+        MinifluxClient {
+            url,
+            token,
+            base_url: Some(base_url),
+        }
+    }
+
+    fn get_base_url(&self) -> &str {
+        self.base_url.as_deref().unwrap_or("https")
+    }
+
     pub async fn get_categories(&self) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
-        let url = format!("https://{}/v1/categories", self.url);
+        let url = format!("{}://{}/v1/categories", self.get_base_url(), self.url);
         let client = Client::new();
         let response = client
             .get(&url)
@@ -51,7 +66,7 @@ impl MinifluxClient {
 
 
     pub async fn get_category_entries(&self, category_id: i32) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
-        let url = format!("https://{}/v1/categories/{}/entries", self.url, category_id);
+        let url = format!("{}://{}/v1/categories/{}/entries", self.get_base_url(), self.url, category_id);
         let client = Client::new();
         let response = client
             .get(&url)
@@ -72,7 +87,7 @@ impl MinifluxClient {
     }
 
     pub async fn get_entries(&self, limit: usize) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
-        let url = format!("https://{}/v1/entries", self.url);
+        let url = format!("{}://{}/v1/entries", self.get_base_url(), self.url);
         let client = Client::new();
         let response = client
             .get(&url)
@@ -96,7 +111,7 @@ impl MinifluxClient {
     }
 
     pub async fn refresh_all_feeds(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let url = format!("https://{}/v1/feeds/refresh", self.url);
+        let url = format!("{}://{}/v1/feeds/refresh", self.get_base_url(), self.url);
         let client = Client::new();
         let response = client
             .put(&url)
@@ -116,7 +131,7 @@ impl MinifluxClient {
     }
 
     pub async fn get_content(&self, entry_id: u64) -> Result<String, Box<dyn std::error::Error>> {
-        let url = format!("https://{}/v1/entries/{}/fetch-content", self.url, entry_id);
+        let url = format!("{}://{}/v1/entries/{}/fetch-content", self.get_base_url(), self.url, entry_id);
         let client = Client::new();
         let response = client
             .get(&url)
@@ -140,7 +155,7 @@ impl MinifluxClient {
     }
 
     pub async fn mark_as_read_some(&self, entry_ids: Vec<u64>) -> Result<(), Box<dyn std::error::Error>> {
-        let url = format!("https://{}/v1/entries", self.url);
+        let url = format!("{}://{}/v1/entries", self.get_base_url(), self.url);
         let client = Client::new();
         let data = Data {
             entry_ids,
@@ -173,19 +188,21 @@ mod test {
     use tracing::debug;
 
     #[tokio::test]
+    #[ignore] // Requiere credenciales reales
     async fn read_entries() {
         dotenv().ok();
         let miniflux = MinifluxClient::new(
             std::env::var("MINIFLUX_URL").expect("MINIFLUX_URL is mandatory"),
             std::env::var("MINIFLUX_TOKEN").expect("MINIFLUX_TOKEN is mandatory"),
         );
-        let entries = miniflux.get_entries().await;
+        let entries = miniflux.get_entries(10).await;
         println!("Entries: {:?}", entries);
         debug!("Entries: {:?}", entries);
         assert!(entries.is_ok());
     }
 
     #[tokio::test]
+    #[ignore] // Requiere credenciales reales
     async fn read_categories() {
         dotenv().ok();
         let miniflux = MinifluxClient::new(
@@ -199,6 +216,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore] // Requiere credenciales reales
     async fn read_category_entries() {
         dotenv().ok();
         let miniflux = MinifluxClient::new(
@@ -247,5 +265,106 @@ mod test {
         assert_eq!(client.token, "token123");
     }
 
+    // Tests con mocks
+    
+    #[tokio::test]
+    async fn test_get_entries_with_mock() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server.mock("GET", "/v1/entries")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("status".into(), "unread".into()),
+                mockito::Matcher::UrlEncoded("limit".into(), "10".into()),
+            ]))
+            .match_header("X-Auth-Token", "test_token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"entries":[{"id":1,"title":"Test Entry"}]}"#)
+            .create_async()
+            .await;
+
+        let client = MinifluxClient::with_base_url(
+            server.host_with_port(),
+            "test_token".to_string(),
+            "http".to_string(),
+        );
+        let result = client.get_entries(10).await;
+        
+        assert!(result.is_ok());
+        let entries = result.unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["id"].as_i64().unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_categories_with_mock() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server.mock("GET", "/v1/categories")
+            .match_header("X-Auth-Token", "test_token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"[{"id":1,"title":"Tech"},{"id":2,"title":"News"}]"#)
+            .create_async()
+            .await;
+
+        let client = MinifluxClient::with_base_url(
+            server.host_with_port(),
+            "test_token".to_string(),
+            "http".to_string(),
+        );
+        let result = client.get_categories().await;
+        
+        assert!(result.is_ok());
+        let categories = result.unwrap();
+        assert_eq!(categories.len(), 2);
+        assert_eq!(categories[0]["title"].as_str().unwrap(), "Tech");
+    }
+
+    #[tokio::test]
+    async fn test_mark_as_read_with_mock() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server.mock("PUT", "/v1/entries")
+            .match_header("X-Auth-Token", "test_token")
+            .match_body(mockito::Matcher::Json(serde_json::json!({
+                "entry_ids": [123],
+                "status": "read"
+            })))
+            .with_status(204)
+            .create_async()
+            .await;
+
+        let client = MinifluxClient::with_base_url(
+            server.host_with_port(),
+            "test_token".to_string(),
+            "http".to_string(),
+        );
+        let result = client.mark_as_read(123).await;
+        
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_get_entries_unauthorized_error() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server.mock("GET", "/v1/entries")
+            .with_status(401)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"error_message":"access unauthorized"}"#)
+            .create_async()
+            .await;
+
+        let client = MinifluxClient::with_base_url(
+            server.host_with_port(),
+            "invalid_token".to_string(),
+            "http".to_string(),
+        );
+        let result = client.get_entries(10).await;
+        
+        // Verifica que retorne un error cuando el servidor responde con 401
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("Miniflux API error"));
+    }
+
 }
+
 
