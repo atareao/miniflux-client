@@ -20,9 +20,6 @@ struct OneItem {
     status: String
 }
 
-const MAX_ENTRIES: usize = 10;
-
-
 impl MinifluxClient {
 
     pub fn new(url: String, token: String) -> Self {
@@ -74,14 +71,14 @@ impl MinifluxClient {
         Ok(content["entries"].as_array().unwrap().to_vec())
     }
 
-    pub async fn get_entries(&self) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
+    pub async fn get_entries(&self, limit: usize) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
         let url = format!("https://{}/v1/entries", self.url);
         let client = Client::new();
         let response = client
             .get(&url)
             .query(&[
                 ("status", "unread"),
-                ("limit", &MAX_ENTRIES.to_string()),
+                ("limit", &limit.to_string()),
                 ])
             .header("X-Auth-Token", &self.token)
             .send()
