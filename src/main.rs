@@ -6,12 +6,16 @@ use std::{env, time};
 use tracing::{debug, error, info};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
+const MAX_ENTRIES : usize = 10;
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::registry()
         .with(fmt::layer())
         .with(EnvFilter::from_default_env())
         .init();
+    info!("==== Starting news fetcher... ====");
+    info!("Version: {}", env!("CARGO_PKG_VERSION"));
     info!("Start");
     let sleep_time = time::Duration::from_secs(
         env::var("SLEEP_TIME")
@@ -23,7 +27,6 @@ async fn main() {
         env::var("MINIFLUX_URL").expect("MINIFLUX_URL is mandatory"),
         env::var("MINIFLUX_TOKEN").expect("MINIFLUX_TOKEN is mandatory"),
     );
-    
     let miniflux_categories = miniflux.get_categories().await;
     debug!("Miniflux categories: {:?}", miniflux_categories);
     let categories = match env::var("MINIFLUX_CATEGORIES").ok() {
@@ -80,9 +83,13 @@ async fn main() {
         }else{
             let mut entries = Vec::new();
             for category in categories.iter() {
+                if entries.len() >= MAX_ENTRIES {
+                    break;
+                }
                 match miniflux.get_category_entries(*category as i32).await {
                     Ok(entries_category) => {
-                        entries.extend(entries_category.clone());
+                        let remaining = MAX_ENTRIES - entries.len();
+                        entries.extend(entries_category.into_iter().take(remaining));
                     },
                     Err(e) => {
                         error!("Error getting entries from category {}: {}", category, e);
@@ -93,8 +100,8 @@ async fn main() {
 
         };
         let mut news = Vec::new();
-        for entry in entries.as_slice() {
-            debug!("Entry: {}", entry);
+        for (index, entry) in entries.as_slice().iter().take(MAX_ENTRIES).enumerate() {
+            debug!("Entry {}: {}", index, entry);
             let id = entry["id"].as_u64().unwrap_or(0);
             let title = entry["title"].as_str().unwrap_or("No title");
             let url = entry["url"].as_str().unwrap_or("No URL");
@@ -187,7 +194,7 @@ async fn main() {
 }
 
 fn escape(text: &str) -> String {
-    let reserved = r#"_*[]()~`>#+-=|{}.!"#;
+    let reserved = r#"_*[]()~`>#+-=|{}.!\\"#;
     let mut escaped = String::new();
     for c in text.chars() {
         if reserved.contains(c) {
@@ -232,9 +239,9 @@ mod tests {
 
     #[test]
     fn test_escape_all_special_chars() {
-        let text = "_*[]()~`>#+-=|{}.!";
+        let text = "_*[]()~`>#+-=|{}.!\\";
         let result = escape(text);
-        assert_eq!(result, "\\_\\*\\[\\]\\(\\)\\~\\`\\>\\#\\+\\-\\=\\|\\{\\}\\.\\!");
+        assert_eq!(result, "\\_\\*\\[\\]\\(\\)\\~\\`\\>\\#\\+\\-\\=\\|\\{\\}\\.\\!\\\\");
     }
 
     #[test]
@@ -242,5 +249,19 @@ mod tests {
         let text = "Price: $100 + tax";
         let result = escape(text);
         assert_eq!(result, "Price: $100 \\+ tax");
+    }
+
+    #[test]
+    fn test_escape_backslash() {
+        let text = "C:\\Users\\test";
+        let result = escape(text);
+        assert_eq!(result, "C:\\\\Users\\\\test");
+    }
+
+    #[test]
+    fn test_escape_complex_markdown() {
+        let text = "**bold** _italic_ [link](url)";
+        let result = escape(text);
+        assert_eq!(result, "\\*\\*bold\\*\\* \\_italic\\_ \\[link\\]\\(url\\)");
     }
 }
