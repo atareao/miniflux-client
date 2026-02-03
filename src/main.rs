@@ -23,6 +23,10 @@ async fn main() {
             .parse::<u64>()
             .unwrap_or(1800),
     );
+    let max_entries = env::var("MAX_ENTRIES")
+        .unwrap_or_else(|_| MAX_ENTRIES.to_string())
+        .parse::<usize>()
+        .unwrap_or(MAX_ENTRIES);
     let miniflux = MinifluxClient::new(
         env::var("MINIFLUX_URL").expect("MINIFLUX_URL is mandatory"),
         env::var("MINIFLUX_TOKEN").expect("MINIFLUX_TOKEN is mandatory"),
@@ -70,7 +74,7 @@ async fn main() {
             error!("Error refreshing Miniflux feeds: {}", e);
         }
         let entries = if categories.is_empty() {
-            match miniflux.get_entries(MAX_ENTRIES).await {
+            match miniflux.get_entries(max_entries).await {
                 Ok(entries) => {
                     debug!("Entries: {:?}", entries);
                     entries
@@ -83,12 +87,12 @@ async fn main() {
         }else{
             let mut entries = Vec::new();
             for category in categories.iter() {
-                if entries.len() >= MAX_ENTRIES {
+                if entries.len() >= max_entries {
                     break;
                 }
                 match miniflux.get_category_entries(*category as i32).await {
                     Ok(entries_category) => {
-                        let remaining = MAX_ENTRIES - entries.len();
+                        let remaining = max_entries - entries.len();
                         entries.extend(entries_category.into_iter().take(remaining));
                     },
                     Err(e) => {
@@ -100,7 +104,7 @@ async fn main() {
 
         };
         let mut news = Vec::new();
-        for (index, entry) in entries.as_slice().iter().take(MAX_ENTRIES).enumerate() {
+        for (index, entry) in entries.as_slice().iter().take(max_entries).enumerate() {
             debug!("Entry {}: {}", index, entry);
             let id = entry["id"].as_u64().unwrap_or(0);
             let title = entry["title"].as_str().unwrap_or("No title");
