@@ -6,7 +6,7 @@ use std::{env, time};
 use tracing::{debug, error, info};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-const MAX_ENTRIES : usize = 10;
+const MAX_ENTRIES: usize = 10;
 
 #[tokio::main]
 async fn main() {
@@ -23,10 +23,12 @@ async fn main() {
             .parse::<u64>()
             .unwrap_or(1800),
     );
+    debug!("Sleep time: {:?} seconds", sleep_time.as_secs());
     let max_entries = env::var("MAX_ENTRIES")
         .unwrap_or_else(|_| MAX_ENTRIES.to_string())
         .parse::<usize>()
         .unwrap_or(MAX_ENTRIES);
+    debug!("Max entries: {}", max_entries);
     let miniflux = MinifluxClient::new(
         env::var("MINIFLUX_URL").expect("MINIFLUX_URL is mandatory"),
         env::var("MINIFLUX_TOKEN").expect("MINIFLUX_TOKEN is mandatory"),
@@ -84,7 +86,7 @@ async fn main() {
                     Vec::new()
                 }
             }
-        }else{
+        } else {
             let mut entries = Vec::new();
             for category in categories.iter() {
                 if entries.len() >= max_entries {
@@ -94,14 +96,13 @@ async fn main() {
                     Ok(entries_category) => {
                         let remaining = max_entries - entries.len();
                         entries.extend(entries_category.into_iter().take(remaining));
-                    },
+                    }
                     Err(e) => {
                         error!("Error getting entries from category {}: {}", category, e);
                     }
                 }
             }
             entries
-
         };
         let mut news = Vec::new();
         for (index, entry) in entries.as_slice().iter().take(max_entries).enumerate() {
@@ -136,23 +137,27 @@ async fn main() {
                     error!("Error sending message to Matrix: {}", e);
                 }
             }
-        }else{
-            match model.process_news(&news).await{
+        } else {
+            match model.process_news(&news).await {
                 Ok(message) => {
                     debug!("Message: {:?}", message);
                     match serde_json::from_str::<Value>(&message) {
                         Ok(value) => {
                             debug!("Value: {:?}", value);
-                            let news = value.get("news")
+                            let news = value
+                                .get("news")
                                 .and_then(|v| v.as_array())
                                 .unwrap_or(&vec![])
                                 .iter()
-                                .map(|v| format!(
-                                    "<h3><a href=\"{}\">{}</a></h3><p>{}</p><br>",
-                                    v.get("url").unwrap().as_str().unwrap_or(""),
-                                    v.get("title").unwrap().as_str().unwrap_or(""),
-                                    v.get("summary").unwrap().as_str().unwrap_or("")
-                                )).collect::<Vec<_>>()
+                                .map(|v| {
+                                    format!(
+                                        "<h3><a href=\"{}\">{}</a></h3><p>{}</p><br>",
+                                        v.get("url").unwrap().as_str().unwrap_or(""),
+                                        v.get("title").unwrap().as_str().unwrap_or(""),
+                                        v.get("summary").unwrap().as_str().unwrap_or("")
+                                    )
+                                })
+                                .collect::<Vec<_>>()
                                 .join("");
                             match matrix.post(&news).await {
                                 Ok(response) => {
@@ -162,16 +167,20 @@ async fn main() {
                                     error!("Error sending news to Matrix: {}", e);
                                 }
                             }
-                            let telegram_news = value.get("news")
+                            let telegram_news = value
+                                .get("news")
                                 .and_then(|v| v.as_array())
                                 .unwrap_or(&vec![])
                                 .iter()
-                                .map(|v| format!(
-                                    "*[{}]({})\n{}\n\n",
-                                    escape(v.get("title").unwrap().as_str().unwrap_or("")),
-                                    escape(v.get("url").unwrap().as_str().unwrap_or("")),
-                                    escape(v.get("summary").unwrap().as_str().unwrap_or(""))
-                                )).collect::<Vec<_>>()
+                                .map(|v| {
+                                    format!(
+                                        "[{}]({})\n{}\n\n",
+                                        escape(v.get("title").unwrap().as_str().unwrap_or("")),
+                                        escape(v.get("url").unwrap().as_str().unwrap_or("")),
+                                        escape(v.get("summary").unwrap().as_str().unwrap_or(""))
+                                    )
+                                })
+                                .collect::<Vec<_>>()
                                 .join("");
                             match telegram.send_message(&telegram_news).await {
                                 Ok(response) => {
@@ -181,12 +190,12 @@ async fn main() {
                                     error!("Error sending message to Telegram: {}", e);
                                 }
                             }
-                        },
+                        }
                         Err(e) => {
                             error!("Error: {}", e);
                         }
                     }
-                },
+                }
                 Err(e) => {
                     error!("Error: {}", e);
                 }
@@ -245,7 +254,10 @@ mod tests {
     fn test_escape_all_special_chars() {
         let text = "_*[]()~`>#+-=|{}.!\\";
         let result = escape(text);
-        assert_eq!(result, "\\_\\*\\[\\]\\(\\)\\~\\`\\>\\#\\+\\-\\=\\|\\{\\}\\.\\!\\\\");
+        assert_eq!(
+            result,
+            "\\_\\*\\[\\]\\(\\)\\~\\`\\>\\#\\+\\-\\=\\|\\{\\}\\.\\!\\\\"
+        );
     }
 
     #[test]

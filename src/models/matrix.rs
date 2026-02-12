@@ -1,15 +1,17 @@
-use serde::{Serialize, Deserialize};
+use super::CustomError;
+use reqwest::{
+    header::{HeaderMap, HeaderName, HeaderValue},
+    Client,
+};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use urlencoding::encode;
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tracing::{info, debug};
-use reqwest::{Client, header::{HeaderMap, HeaderValue,
-    HeaderName}};
-use super::CustomError;
+use tracing::{debug, info};
+use urlencoding::encode;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct MatrixClient{
+pub struct MatrixClient {
     server: String,
     token: String,
     room: String,
@@ -18,9 +20,25 @@ pub struct MatrixClient{
 }
 
 impl MatrixClient {
+    pub fn new(server: String, token: String, room: String) -> Self {
+        // Debug para ver qué valores estamos recibiendo
+        debug!(
+            "MatrixClient::new - server: {}, token: {}, room: {}",
+            server, token, room
+        );
 
-    pub fn new(server: String, token: String, room: String) -> Self{
-        MatrixClient{
+        // Validación básica para detectar configuración incorrecta
+        if room == token {
+            eprintln!("WARNING: MATRIX_ROOM and MATRIX_TOKEN have the same value. This is likely incorrect.");
+            eprintln!("MATRIX_ROOM should contain only the room ID part (before ':')");
+            eprintln!("MATRIX_TOKEN should be your access token");
+        }
+        if room.contains(':') {
+            eprintln!("WARNING: MATRIX_ROOM '{}' contains ':' - it should only contain the room ID part before ':'", room);
+            eprintln!("The server part will be added automatically");
+        }
+
+        MatrixClient {
             server,
             token,
             room,
@@ -28,8 +46,8 @@ impl MatrixClient {
         }
     }
 
-    pub fn with_base_url(server: String, token: String, room: String, base_url: String) -> Self{
-        MatrixClient{
+    pub fn with_base_url(server: String, token: String, room: String, base_url: String) -> Self {
+        MatrixClient {
             server,
             token,
             room,
@@ -41,16 +59,19 @@ impl MatrixClient {
         self.base_url.as_deref().unwrap_or("https")
     }
 
-    pub async fn post(&self, message: &str) -> Result<String, CustomError>{
+    pub async fn post(&self, message: &str) -> Result<String, CustomError> {
         info!("post_with_matrix");
         debug!("Post with matrix: {}", message);
+        let txn_id = Self::ts().to_string().replace(".", "");
+        // MATRIX_ROOM contiene solo la primera parte, siempre componemos el room ID completo
+        let room_id = format!("{}:{}", self.room, self.server);
+        debug!("Room ID composed: {}", room_id);
         let url = format!(
-            "{}://{}/_matrix/client/v3/rooms/{}:{}/send/m.room.message/{}",
+            "{}://{}/_matrix/client/v3/rooms/{}/send/m.room.message/{}",
             self.get_base_url(),
             self.server,
-            encode(&self.room),
-            self.server,
-            Self::ts(),
+            room_id,
+            txn_id,
         );
         debug!("Url: {}", url);
         let body = json!({
@@ -61,41 +82,46 @@ impl MatrixClient {
         });
         debug!("Body: {}", body);
         let mut header_map = HeaderMap::new();
-        header_map.insert(HeaderName::from_str("Content-type").unwrap(),
-                          HeaderValue::from_str("application/json").unwrap());
-        header_map.append(HeaderName::from_str("Authorization").unwrap(),
-                          HeaderValue::from_str(&format!("Bearer {}", self.token)).unwrap());
+        header_map.insert(
+            HeaderName::from_str("Content-type").unwrap(),
+            HeaderValue::from_str("application/json").unwrap(),
+        );
+        header_map.append(
+            HeaderName::from_str("Authorization").unwrap(),
+            HeaderValue::from_str(&format!("Bearer {}", self.token)).unwrap(),
+        );
         debug!("Header: {:?}", header_map);
-        Self::_put(&url, header_map, &body)
-            .await
+        Self::_put(&url, header_map, &body).await
     }
 
-    async fn _put(url: &str, header_map: HeaderMap, body: &Value) -> Result<String, CustomError>{
+    async fn _put(url: &str, header_map: HeaderMap, body: &Value) -> Result<String, CustomError> {
         let client = Client::builder()
             .default_headers(header_map)
             .build()
             .unwrap();
-        let content = serde_json::to_string(body).unwrap();
-        let response = client.put(url).body(content).send()
-            .await?;
-        
+        let response = client.put(url).json(body).send().await?;
+
         let status = response.status();
         let response_body = response.text().await?;
-        
+
         if !status.is_success() {
-            debug!("Matrix API error - Status: {}, Body: {}", status, response_body);
+            debug!(
+                "Matrix API error - Status: {}, Body: {}",
+                status, response_body
+            );
         } else {
             debug!("Matrix message sent successfully");
         }
-        
+
         Ok(response_body)
     }
 
-    fn ts() -> f64{
+    fn ts() -> f64 {
         debug!("ts");
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap() .as_secs_f64()
+            .unwrap()
+            .as_secs_f64()
     }
 }
 
@@ -103,11 +129,7 @@ impl MatrixClient {
 mod test {
     use super::MatrixClient;
     use dotenv::dotenv;
-    use tracing_subscriber::{
-        EnvFilter,
-        layer::SubscriberExt,
-        util::SubscriberInitExt
-    };
+    use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
     #[tokio::test]
     #[ignore] // Requiere credenciales reales
@@ -188,4 +210,3 @@ mod test {
         assert!(ts2 >= ts1);
     }
 }
-
