@@ -94,6 +94,8 @@ impl MinifluxClient {
             .query(&[
                 ("status", "unread"),
                 ("limit", &limit.to_string()),
+                ("order", "published_at"),
+                ("direction", "asc"),
                 ])
             .header("X-Auth-Token", &self.token)
             .send()

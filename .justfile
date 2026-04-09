@@ -5,26 +5,19 @@ version := `vampus show`
 build:
     echo {{version}}
     echo {{name}}
-    docker build -t {{user}}/{{name}}:{{version}} \
+    podman build -t {{user}}/{{name}}:{{version}} \
                  -t {{user}}/{{name}}:latest \
                  .
 
 tag:
-    docker tag {{user}}/{{name}}:{{version}} {{user}}/{{name}}:latest
+    podman tag {{user}}/{{name}}:{{version}} {{user}}/{{name}}:latest
 
 push:
-    docker push --all-tags {{user}}/{{name}}
-
-buildx:
-    #!/usr/bin/env bash
-    #--platform linux/arm/v7,linux/arm64/v8,linux/amd64 \
-    docker buildx build \
-           --push \
-           --platform linux/arm/v7,linux/arm64/v8,linux/amd64 \
-           --tag {{user}}/{{name}}:{{version}} .
+    podman push {{user}}/{{name}}:{{version}}
+    podman push {{user}}/{{name}}:latest
 
 run:
-    docker run --rm \
+    podman run --rm \
                --init \
                --name croni \
                --init \
@@ -33,7 +26,7 @@ run:
                {{user}}/{{name}}:{{version}}
 
 sh:
-    docker run --rm \
+    podman run --rm \
                -it \
                --name croni \
                --init \
