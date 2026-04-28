@@ -129,14 +129,6 @@ async fn main() {
         }
         if news.is_empty() {
             info!("No new entries");
-            match matrix.post("No hay nuevas noticias").await {
-                Ok(response) => {
-                    debug!("Matrix response: {:?}", response);
-                }
-                Err(e) => {
-                    error!("Error sending message to Matrix: {}", e);
-                }
-            }
         } else {
             match model.process_news(&news).await {
                 Ok(message) => {
