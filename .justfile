@@ -1,0 +1,37 @@
+user    := "atareao"
+name    := `basename ${PWD}`
+version := `vampus show`
+
+build:
+    echo {{version}}
+    echo {{name}}
+    podman build -t {{user}}/{{name}}:{{version}} \
+                 -t {{user}}/{{name}}:latest \
+                 .
+
+tag:
+    podman tag {{user}}/{{name}}:{{version}} {{user}}/{{name}}:latest
+
+push:
+    podman push {{user}}/{{name}}:{{version}}
+    podman push {{user}}/{{name}}:latest
+
+run:
+    podman run --rm \
+               --init \
+               --name croni \
+               --init \
+               --env_file croni.env \
+               -v ${PWD}/crontab:/crontab \
+               {{user}}/{{name}}:{{version}}
+
+sh:
+    podman run --rm \
+               -it \
+               --name croni \
+               --init \
+               --env-file croni.env \
+               -v ${PWD}/crontab:/crontab \
+               {{user}}/{{name}}:{{version}} \
+               sh
+
