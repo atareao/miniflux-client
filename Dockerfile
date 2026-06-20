@@ -13,10 +13,11 @@ RUN apk update && apk upgrade && \
 
 WORKDIR /app
 
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml ./
 COPY src src
 
-RUN cargo build --release && \
+RUN cargo generate-lockfile && \
+    cargo build --release && \
     cp /app/target/release/miniflux-client /app/miniflux-client
 
 ###############################################################################
