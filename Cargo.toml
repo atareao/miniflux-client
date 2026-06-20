@@ -1,6 +1,6 @@
 [package]
 name = "miniflux-client"
-version = "0.1.8"
+version = "0.1.9"
 description = "A Rust client for the Miniflux RSS reader API"
 license = "MIT"
 edition = "2021"
