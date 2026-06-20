@@ -1,0 +1,141 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            ext: ""
+            archive: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+            ext: ""
+            archive: tar.gz
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        run: rustup target add ${{ matrix.target }}
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev pkg-config
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+      - name: Prepare archive
+        shell: bash
+        run: |
+          BIN="target/${{ matrix.target }}/release/miniflux-client${{ matrix.ext }}"
+          ARCHIVE_NAME="miniflux-client${{ matrix.ext }}"
+          cp "$BIN" "$ARCHIVE_NAME"
+          PKG="miniflux-client-${{ matrix.target }}"
+          if [ "${{ matrix.archive }}" = "tar.gz" ]; then
+            tar czf "$PKG.tar.gz" "$ARCHIVE_NAME"
+            echo "ARTIFACT=$PKG.tar.gz" >> $GITHUB_ENV
+          else
+            7z a "$PKG.zip" "$ARCHIVE_NAME"
+            echo "ARTIFACT=$PKG.zip" >> $GITHUB_ENV
+          fi
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: miniflux-client-${{ matrix.target }}
+          path: ${{ env.ARTIFACT }}
+
+  release:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: miniflux-client-*
+          merge-multiple: true
+      - name: Generate release body
+        run: |
+          cat > notes.md <<'EOF'
+          ## miniflux-client
+
+          ### Downloads
+
+          | Architecture | File |
+          |---|---|
+          EOF
+          for f in *.*; do
+            [[ "$f" == *.md ]] && continue
+            [[ "$f" == *.txt ]] && continue
+            [ -f "$f" ] || continue
+            arch=$(echo "$f" | sed 's/^miniflux-client-//; s/\.tar\.gz$//; s/\.zip$//')
+            echo "| \`$arch\` | \`$f\` |" >> notes.md
+          done
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: miniflux-client ${{ github.ref_name }}
+          body_path: notes.md
+          files: |
+            *.tar.gz
+            *.zip
+          generate_release_notes: true
+
+  publish:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev pkg-config
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --allow-dirty
+
+  docker:
+    needs: [release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64
